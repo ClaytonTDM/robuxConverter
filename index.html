@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <title>Robux Currency Converter</title>
+    <script>
+        // Add dark mode initialization before Tailwind			
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+    <link href="./dist/output.css" rel="stylesheet">
+</head>
+<body class="flex justify-center items-center bg-zinc-100 dark:bg-zinc-900 p-4 min-h-screen">
+    <div class="relative bg-white dark:bg-zinc-800 shadow-lg p-8 rounded-xl w-full max-w-md">
+        <!-- Add dark mode toggle button -->
+        <button 
+            id="theme-toggle" 
+            class="top-4 right-4 absolute hover:bg-zinc-100 dark:hover:bg-zinc-700 p-2 rounded-lg text-zinc-500 dark:text-zinc-400"
+            aria-label="Toggle dark mode"
+        >
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <!-- sun icon -->
+                <path class="dark:hidden" fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/>
+                <!-- moon icon -->
+                <path class="dark:block hidden" fill-rule="evenodd" d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
+            </svg>
+        </button>
+
+        <h1 class="mb-6 font-bold text-2xl text-center text-zinc-900 dark:text-white">Robux Currency Converter</h1>
+        
+        <div class="mb-4">
+            <label class="block mb-2 font-bold text-sm text-zinc-700 dark:text-zinc-300" for="robux-type">
+                Robux Type
+            </label>
+            <select 
+                id="robux-type" 
+                class="dark:border-zinc-600 dark:bg-zinc-700 shadow focus:shadow-outline mb-4 px-3 py-2 border rounded w-full text-zinc-700 dark:text-zinc-300 leading-tight appearance-none focus:outline-none"
+            >
+                <option value="consumer">Consumer Robux (800 Robux = $10)</option>
+                <option value="devex">DevEx Robux (100,000 Robux = $350)</option>
+            </select>
+        </div>
+
+        <div class="mb-4">
+            <label class="block mb-2 font-bold text-sm text-zinc-700 dark:text-zinc-300" for="robux-input">
+                Robux Amount
+            </label>
+            <input 
+                id="robux-input" 
+                type="number" 
+                placeholder="Enter Robux amount" 
+                class="dark:border-zinc-600 dark:bg-zinc-700 shadow focus:shadow-outline px-3 py-2 border rounded w-full text-zinc-700 dark:text-zinc-300 leading-tight appearance-none focus:outline-none"
+            >
+        </div>
+        
+        <div class="mb-4">
+            <label class="block mb-2 font-bold text-sm text-zinc-700 dark:text-zinc-300" for="currency-select">
+                Target Currency
+            </label>
+            <select 
+                id="currency-select" 
+                class="dark:border-zinc-600 dark:bg-zinc-700 shadow focus:shadow-outline px-3 py-2 border rounded w-full text-zinc-700 dark:text-zinc-300 leading-tight appearance-none focus:outline-none"
+            >
+                <!-- Currencies will be populated dynamically -->
+            </select>
+        </div>
+        
+        <div id="result" class="mt-4 font-bold text-center text-xl text-zinc-900 dark:text-white"></div>
+        <div id="last-updated" class="mt-2 text-center text-sm text-zinc-500 dark:text-zinc-400"></div>
+    </div>
+
+    <script>
+        // Conversion rates
+        const CONVERSION_RATES = {
+            consumer: 10 / 800,     // $10 per 800 Robux
+            devex: 350 / 100000     // $350 per 100,000 Robux
+        };
+
+        // DOM Elements
+        const robuxInput = document.getElementById('robux-input');
+        const robuxTypeSelect = document.getElementById('robux-type');
+        const currencySelect = document.getElementById('currency-select');
+        const resultDiv = document.getElementById('result');
+        const lastUpdatedDiv = document.getElementById('last-updated');
+
+        // Exchange rates cache
+        let exchangeRates = null;
+        let lastFetchTime = 0;
+
+        // Add after the cache variables
+        let userCountry = null;
+
+        // Fetch exchange rates
+        async function fetchExchangeRates() {
+            // Check if we have recent rates (cache for 1 hour)
+            const currentTime = Date.now();
+            if (exchangeRates && (currentTime - lastFetchTime < 3600000)) {
+                return exchangeRates;
+            }
+
+            try {
+                // Using a free exchange rate API
+                const response = await fetch('https://open.er-api.com/v6/latest/USD');
+                const data = await response.json();
+                
+                if (data.result === 'success') {
+                    exchangeRates = data.rates;
+                    lastFetchTime = currentTime;
+                    lastUpdatedDiv.textContent = `Rates updated: ${new Date(currentTime).toLocaleString()}`;
+                    
+                    // Populate currency dropdown
+                    populateCurrencyDropdown(exchangeRates);
+                    
+                    return exchangeRates;
+                } else {
+                    throw new Error('Failed to fetch exchange rates');
+                }
+            } catch (error) {
+                console.error('Exchange rate fetch error:', error);
+                lastUpdatedDiv.textContent = 'Failed to update rates. Using cached rates.';
+                return exchangeRates;
+            }
+        }
+
+        // Add new function to get user's location
+        async function getUserLocation() {
+            try {
+                const response = await fetch('https://ipapi.co/json/');
+                const data = await response.json();
+                userCountry = data.country;
+                return data;
+            } catch (error) {
+                console.error('Error fetching location:', error);
+                return null;
+            }
+        }
+
+        // Currency names cache
+        let currencyNamesCache = null;
+
+        // Fetch currency names from REST Countries API
+        async function fetchCurrencyNames() {
+            if (currencyNamesCache) {
+                return currencyNamesCache;
+            }
+
+            try {
+                const response = await fetch('https://restcountries.com/v3.1/all?fields=currencies');
+                const countries = await response.json();
+                
+                const currencyNames = {};
+                countries.forEach(country => {
+                    if (country.currencies) {
+                        Object.entries(country.currencies).forEach(([code, details]) => {
+                            if (details.name && !currencyNames[code]) {
+                                currencyNames[code] = details.name;
+                            }
+                        });
+                    }
+                });
+                
+                currencyNamesCache = currencyNames;
+                return currencyNames;
+            } catch (error) {
+                console.error('Error fetching currency names:', error);
+                return {};
+            }
+        }
+
+        // Modify populateCurrencyDropdown to use the API data
+        async function populateCurrencyDropdown(rates) {
+            // Clear existing options
+            currencySelect.innerHTML = '';
+
+            // Get currency names and user location in parallel
+            const [currencyNames, locationData] = await Promise.all([
+                fetchCurrencyNames(),
+                getUserLocation()
+            ]);
+
+            // Sort currencies alphabetically
+            const sortedCurrencies = Object.keys(rates).sort();
+
+            // Create options for each currency
+            sortedCurrencies.forEach(currency => {
+                const option = document.createElement('option');
+                option.value = currency;
+                const currencyName = currencyNames[currency] || 'Currency';
+                option.textContent = `${currency} (${currencyName})`;
+                currencySelect.appendChild(option);
+            });
+
+            // Set default currency based on location, fallback to USD
+            if (locationData && locationData.currency) {
+                currencySelect.value = locationData.currency;
+                // Add a visual indicator for local currency
+                const selectedOption = currencySelect.querySelector(`option[value="${locationData.currency}"]`);
+                if (selectedOption) {
+                    selectedOption.textContent += ' (Your local currency)';
+                }
+            } else {
+                currencySelect.value = 'USD';
+            }
+        }
+
+        // Calculate conversion
+        async function calculateConversion() {
+            const robuxAmount = parseFloat(robuxInput.value) || 0;
+            const robuxType = robuxTypeSelect.value;
+            const targetCurrency = currencySelect.value;
+
+            if (robuxAmount <= 0) {
+                resultDiv.textContent = 'Please enter a valid Robux amount';
+                return;
+            }
+
+            try {
+                // Fetch latest rates
+                const rates = await fetchExchangeRates();
+
+                if (!rates) {
+                    resultDiv.textContent = 'Unable to fetch exchange rates';
+                    return;
+                }
+
+                // Calculate USD value based on Robux type
+                const usdValue = robuxAmount * CONVERSION_RATES[robuxType];
+                
+                // Convert to target currency
+                const convertedAmount = usdValue * rates[targetCurrency];
+
+                // Descriptive result text
+                const typeDescription = robuxType === 'consumer' 
+                    ? 'Consumer Robux (800 Robux = $10)' 
+                    : 'DevEx Robux (100,000 Robux = $350)';
+
+                resultDiv.textContent = `${robuxAmount} ${typeDescription} = ${convertedAmount.toFixed(2)} ${targetCurrency}`;
+            } catch (error) {
+                console.error('Conversion error:', error);
+                resultDiv.textContent = 'Error calculating conversion';
+            }
+        }
+
+        // Add event listeners
+        robuxInput.addEventListener('input', calculateConversion);
+        robuxTypeSelect.addEventListener('change', calculateConversion);
+        currencySelect.addEventListener('change', calculateConversion);
+
+        // Modify the initial fetch to add a loading state
+        async function initialize() {
+            resultDiv.textContent = 'Loading currency data...';
+            await fetchExchangeRates();
+            if (robuxInput.value) {
+                calculateConversion();
+            } else {
+                resultDiv.textContent = 'Enter Robux amount to see conversion';
+            }
+        }
+
+        // Replace the initial fetchExchangeRates() call with:
+        initialize();
+
+        // Add dark mode toggle functionality
+        const themeToggleButton = document.getElementById('theme-toggle');
+        
+        function toggleDarkMode() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+
+        themeToggleButton.addEventListener('click', toggleDarkMode);
+    </script>
+</body>
+</html>
